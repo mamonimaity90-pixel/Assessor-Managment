@@ -1,0 +1,6 @@
+{
+  "name": "NABH Assessor Registry",
+  "description": "Comprehensive database and interactive analytics dashboard for NABH assessors under Accreditation, Certification, and Empanelment schemes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
