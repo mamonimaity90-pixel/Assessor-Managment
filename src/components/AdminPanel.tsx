@@ -350,9 +350,19 @@ export default function AdminPanel({
       specialization: formData.specialization.trim() || 'General Healthcare',
       dateOfEmpanelment: formData.dateOfEmpanelment || `${formData.empaneledYear}-04-01`,
       empaneledYear: Number(formData.empaneledYear) || new Date().getFullYear(),
-       status: formData.status,
+      status: formData.status,
       courses: tempCourses,
       programs: tempAssociations,
+      roleProgression: tempAssociations.map((assoc, idx) => ({
+        id: `RP-INIT-${formData.assessorId.trim()}-${idx}-${Date.now()}`,
+        scheme: assoc.scheme,
+        program: assoc.program,
+        roleFrom: "None (Newly Mapped)",
+        roleTo: assoc.capacity,
+        effectiveDate: formData.dateOfEmpanelment || `${formData.empaneledYear}-04-01`,
+        remarks: "Initial empanelment mapping during registration.",
+        timestamp: new Date().toISOString()
+      })),
       biographyDocs: tempBiographyDocs,
       otherDocs: tempOtherDocs
     };

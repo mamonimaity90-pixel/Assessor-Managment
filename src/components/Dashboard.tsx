@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { Assessor, SchemeType } from '../types';
-import { Sparkles, Users, UserCheck, UserPlus, UserX, Send, RefreshCw, GraduationCap, BarChart4, AlertCircle } from 'lucide-react';
+import { Sparkles, Users, UserCheck, UserPlus, UserX, Send, RefreshCw, GraduationCap, BarChart4, AlertCircle, Calendar, ShieldAlert, History, Search } from 'lucide-react';
 
 interface DashboardProps {
   assessors: Assessor[];
@@ -24,11 +24,132 @@ export default function Dashboard({ assessors, onQuickFilter, catalog }: Dashboa
   const [filterGender, setFilterGender] = useState<string>('All');
   const [filterJobRole, setFilterJobRole] = useState<string>('All');
 
+  // Interactive filtering states for Banned & Inactivity Reason Analysis
+  const [reasonStatusType, setReasonStatusType] = useState<'All' | 'Banned' | 'Inactive'>('All');
+  const [reasonSearch, setReasonSearch] = useState('');
+  const [reasonSortOrder, setReasonSortOrder] = useState<'desc' | 'asc'>('desc');
+
   // AI query state
   const [aiQuestion, setAiQuestion] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+
+  // Memoized categories mapping for compliance reason distributions
+  const reasonCategories = React.useMemo(() => {
+    let conflictCount = 0;
+    let voluntaryCount = 0;
+    let competenceCount = 0;
+    let medicalCount = 0;
+    let conductCount = 0;
+    let totalEvents = 0;
+
+    assessors.forEach(a => {
+      const reasonsToScan: string[] = [];
+      if ((a.status === 'Banned' || a.status === 'Inactive') && a.banReason) {
+        reasonsToScan.push(a.banReason);
+      }
+      a.statusLogs?.forEach(l => {
+        if ((l.statusTo === 'Banned' || l.statusTo === 'Inactive') && l.remarks) {
+          reasonsToScan.push(l.remarks);
+        }
+      });
+
+      reasonsToScan.forEach(r => {
+        const text = r.toLowerCase();
+        totalEvents++;
+        if (text.includes('conflict') || text.includes('consulting') || text.includes('disclose') || text.includes('privately')) {
+          conflictCount++;
+        } else if (text.includes('voluntary') || text.includes('retire') || text.includes('personal') || text.includes('retired')) {
+          voluntaryCount++;
+        } else if (text.includes('medical') || text.includes('health') || text.includes('leave') || text.includes('welness')) {
+          medicalCount++;
+        } else if (text.includes('ethic') || text.includes('conduct') || text.includes('violation') || text.includes('misconduct')) {
+          conductCount++;
+        } else {
+          competenceCount++;
+        }
+      });
+    });
+
+    const safeTotal = totalEvents || 1;
+
+    return [
+      { name: 'Conflict of Interest / Board Policy Breach', count: conflictCount, pct: Math.round((conflictCount / safeTotal) * 100), color: 'bg-rose-500', barColor: 'bg-rose-500' },
+      { name: 'Voluntary Sabbatical / Leave of Absence', count: voluntaryCount, pct: Math.round((voluntaryCount / safeTotal) * 100), color: 'bg-amber-500', barColor: 'bg-amber-500' },
+      { name: 'Medical & Wellness / Health Mandates', count: medicalCount, pct: Math.round((medicalCount / safeTotal) * 100), color: 'bg-indigo-500', barColor: 'bg-indigo-500' },
+      { name: 'Ethical Violations / Audit Misconduct', count: conductCount, pct: Math.round((conductCount / safeTotal) * 100), color: 'bg-red-600', barColor: 'bg-red-600' },
+      { name: 'Schedule Availability & Inactivity', count: competenceCount, pct: Math.round((competenceCount / safeTotal) * 100), color: 'bg-slate-400', barColor: 'bg-slate-400' },
+    ].sort((a, b) => b.count - a.count);
+  }, [assessors]);
+
+  // Chronological timeline events list
+  const deactivationEvents = React.useMemo(() => {
+    const list: {
+      id: string;
+      assessorId: string;
+      assessorName: string;
+      eventType: 'Banned' | 'Inactive';
+      date: string;
+      reason: string;
+      isHistoric: boolean;
+    }[] = [];
+
+    assessors.forEach(a => {
+      // 1. Current State (Banned / Inactive)
+      if (a.status === 'Banned' || a.status === 'Inactive') {
+        const matchingLog = a.statusLogs?.find(l => l.statusTo === a.status);
+        const date = matchingLog?.dateOfChange || a.dateOfEmpanelment || '2024-01-01';
+        list.push({
+          id: `current-${a.assessorId}`,
+          assessorId: a.assessorId,
+          assessorName: a.name,
+          eventType: a.status as 'Banned' | 'Inactive',
+          date: date,
+          reason: a.banReason || 'No reason specified in registry profile.',
+          isHistoric: false
+        });
+      }
+
+      // 2. Archive Logs
+      a.statusLogs?.forEach(log => {
+        if (log.statusTo === 'Banned' || log.statusTo === 'Inactive') {
+          // Avoid duplicate entry if dates and types are identical
+          if (list.some(e => e.assessorId === a.assessorId && e.eventType === log.statusTo && e.date === log.dateOfChange)) {
+            return;
+          }
+          list.push({
+            id: log.id,
+            assessorId: a.assessorId,
+            assessorName: a.name,
+            eventType: log.statusTo as 'Banned' | 'Inactive',
+            date: log.dateOfChange || '2024-01-01',
+            reason: log.remarks || 'No reason specified in registry logs.',
+            isHistoric: true
+          });
+        }
+      });
+    });
+
+    // Subfilter
+    return list.filter(e => {
+      if (reasonStatusType === 'Banned' && e.eventType !== 'Banned') return false;
+      if (reasonStatusType === 'Inactive' && e.eventType !== 'Inactive') return false;
+      
+      const query = reasonSearch.toLowerCase().trim();
+      if (query) {
+        const matchesName = e.assessorName.toLowerCase().includes(query);
+        const matchesId = e.assessorId.toLowerCase().includes(query);
+        const matchesReason = e.reason.toLowerCase().includes(query);
+        if (!matchesName && !matchesId && !matchesReason) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return reasonSortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+  }, [assessors, reasonStatusType, reasonSearch, reasonSortOrder]);
 
   // Expanded demographic dataset where each program-role association counts separately
   const expandedDemographics = React.useMemo(() => {
@@ -999,6 +1120,167 @@ export default function Dashboard({ assessors, onQuickFilter, catalog }: Dashboa
                   <span className="font-bold text-slate-700 uppercase tracking-wide block mb-1">💡 Interactive Check</span>
                   Hover on the dual-bars to inspect specific additions vs administrative actions count overlays for any chosen calendar year.
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Widget 07: Banned & Inactive Reason Analysis Panel */}
+          <div className="lg:col-span-12 bg-white border border-slate-205 rounded-xl p-6 shadow-sm space-y-6">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between border-b border-slate-100 pb-4 gap-4">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#2563eb] font-bold block">Widget 07 &bull; Disciplinary & Dormancy Reason Analyzer</span>
+                <h3 className="text-sm font-bold text-slate-900 leading-tight mt-0.5">Banned & Inactive Reason Tracking Timeline</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Analyze dynamic reason categories and chronological timeline logs of administrative deactivation actions over a period of time.
+                </p>
+              </div>
+
+              {/* Filtering Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Search */}
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                    <Search className="h-3.5 w-3.5" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search keywords..."
+                    value={reasonSearch}
+                    onChange={(e) => setReasonSearch(e.target.value)}
+                    className="pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-450 focus:outline-none focus:border-blue-500 font-mono w-40 sm:w-48 transition-all"
+                  />
+                  {reasonSearch && (
+                    <button 
+                      onClick={() => setReasonSearch('')} 
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650 font-sans text-xs font-bold"
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
+
+                {/* statusType buttons picker */}
+                <div className="bg-slate-100 p-0.5 rounded-lg border border-slate-200 inline-flex">
+                  {(['All', 'Banned', 'Inactive'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setReasonStatusType(type)}
+                      className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold transition-all ${
+                        reasonStatusType === type 
+                          ? 'bg-white text-slate-900 shadow-sm' 
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sort order toggle buttons */}
+                <button
+                  type="button"
+                  onClick={() => setReasonSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-lg p-1.5 text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                  title="Toggle Chronological Sorting"
+                >
+                  <History className="h-3.5 w-3.5 text-blue-600" />
+                  <span className="text-[10px] font-mono uppercase font-bold">{reasonSortOrder === 'desc' ? 'Newest' : 'Oldest'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Categorized Reasons Analysis Meter Bar Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              <div className="lg:col-span-2 bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-4">
+                <div>
+                  <h4 className="text-xs font-extrabold font-sans text-slate-800">Reason Category Metric Model</h4>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Dynamic heuristics classification of bans & inactive records remarks.</p>
+                </div>
+
+                <div className="space-y-3.5">
+                  {reasonCategories.map((cat, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-mono">
+                        <span className="text-slate-600 font-semibold truncate max-w-[200px]" title={cat.name}>
+                          {cat.name}
+                        </span>
+                        <span className="text-slate-900 font-bold shrink-0">{cat.count} ({cat.pct}%)</span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-500 ${cat.barColor}`} 
+                          style={{ width: `${cat.pct}%` }} 
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Event Timeline Streams */}
+              <div className="lg:col-span-3 space-y-3">
+                <div className="flex justify-between items-center text-xs font-sans text-slate-600">
+                  <span className="font-extrabold flex items-center gap-1.5">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+                    <span>Progression & Disciplinary Feed ({deactivationEvents.length})</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">Fuzzy Tracking Feed</span>
+                </div>
+
+                {deactivationEvents.length === 0 ? (
+                  <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl py-12 flex flex-col items-center justify-center text-slate-400 gap-1.5">
+                    <AlertCircle className="h-6 w-6 text-slate-300" />
+                    <p className="text-xs font-mono">No matching records found with deactivation remarks</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                    {deactivationEvents.map((evt, idx) => (
+                      <div 
+                        key={evt.id} 
+                        className="bg-white border border-slate-200 hover:border-slate-300 rounded-lg p-3.5 shadow-sm transition-all flex items-start gap-3 relative overflow-hidden"
+                      >
+                        {/* Event highlight left bar */}
+                        <div className={`absolute top-0 bottom-0 left-0 w-1 ${
+                          evt.eventType === 'Banned' ? 'bg-rose-500' : 'bg-amber-500'
+                        }`} />
+
+                        <div className="flex-grow space-y-1 pl-1">
+                          <div className="flex items-center justify-between gap-2.5 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-slate-800 text-xs">{evt.assessorName}</span>
+                              <span className="text-[9px] font-mono text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">ID: {evt.assessorId}</span>
+                            </div>
+                            
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                evt.eventType === 'Banned' 
+                                  ? 'bg-rose-50 border border-rose-100 text-rose-700' 
+                                  : 'bg-amber-50 border border-amber-100 text-amber-700'
+                              }`}>
+                                {evt.eventType}
+                              </span>
+                              
+                              <span className="text-[10px] text-slate-600 font-bold flex items-center gap-1 whitespace-nowrap">
+                                <Calendar className="h-3 w-3 inline text-slate-400" />
+                                {evt.date}
+                              </span>
+                            </div>
+                          </div>
+
+                          <blockquote className="text-[11px] font-sans text-slate-600 bg-slate-50 border-s-2 border-slate-300 p-2 italic leading-relaxed mt-1 whitespace-pre-wrap">
+                            "{evt.reason}"
+                          </blockquote>
+
+                          <div className="text-[9px] font-mono text-slate-400 flex items-center gap-1.5">
+                            <span>Origin state:</span>
+                            <span className="text-slate-600 font-bold uppercase">{evt.isHistoric ? 'Historic transition' : 'Current profile status'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -20,6 +20,17 @@ export interface StatusLogEntry {
   dateOfChange: string; // Date of deactivation, ban, or reinstatement
 }
 
+export interface RoleProgressionLog {
+  id: string;
+  scheme: SchemeType;
+  program: string;
+  roleFrom: string;
+  roleTo: string;
+  effectiveDate: string;
+  remarks?: string;
+  timestamp: string;
+}
+
 export interface AssessorDocument {
   id: string;
   name: string;
@@ -66,6 +77,7 @@ export interface Assessor {
   courses: CourseAttended[];
   programs: ProgramAssociation[];
   statusLogs?: StatusLogEntry[];
+  roleProgression?: RoleProgressionLog[];
   biographyDocs?: AssessorDocument[];
   otherDocs?: AssessorDocument[];
 }
@@ -137,6 +149,18 @@ export const INITIAL_ASSESSORS: Assessor[] = [
       { scheme: "Accreditation", program: "Hospitals (Full Accreditation)", capacity: "Principal Assessor" },
       { scheme: "Accreditation", program: "Medical Imaging Services (MIS)", capacity: "Assessor" }
     ],
+    roleProgression: [
+      {
+        id: "RP-081-1",
+        scheme: "Accreditation",
+        program: "Hospitals (Full Accreditation)",
+        roleFrom: "Co-Assessor",
+        roleTo: "Principal Assessor",
+        effectiveDate: "2019-06-01",
+        remarks: "Promoted to Principal Assessor after successfully passing the 5th Edition Conversion certification.",
+        timestamp: "2019-06-01T10:00:00Z"
+      }
+    ],
     biographyDocs: [],
     otherDocs: []
   },
@@ -169,6 +193,18 @@ export const INITIAL_ASSESSORS: Assessor[] = [
     programs: [
       { scheme: "Certification", program: "Nursing Excellence Certification", capacity: "Principal Assessor" },
       { scheme: "Accreditation", program: "Hospitals (Full Accreditation)", capacity: "Assessor" }
+    ],
+    roleProgression: [
+      {
+        id: "RP-104-1",
+        scheme: "Certification",
+        program: "Nursing Excellence Certification",
+        roleFrom: "Co-Assessor",
+        roleTo: "Principal Assessor",
+        effectiveDate: "2021-01-15",
+        remarks: "Elevated to Principal status following consecutive flawless audits peer reviews.",
+        timestamp: "2021-01-15T14:30:00Z"
+      }
     ],
     biographyDocs: [],
     otherDocs: []
@@ -203,6 +239,16 @@ export const INITIAL_ASSESSORS: Assessor[] = [
     programs: [
       { scheme: "Certification", program: "Medical Laboratory Programme", capacity: "Principal Assessor" },
       { scheme: "Certification", program: "Emergency Department Certification", capacity: "Assessor" }
+    ],
+    statusLogs: [
+      {
+        id: "LOG-INIT-1",
+        timestamp: "2023-05-15T09:00:00Z",
+        statusFrom: "Active",
+        statusTo: "Inactive",
+        remarks: "Voluntarily inactive due to health reasons (retired from intensive active field duties)",
+        dateOfChange: "2023-05-15"
+      }
     ],
     biographyDocs: [],
     otherDocs: []
@@ -270,6 +316,16 @@ export const INITIAL_ASSESSORS: Assessor[] = [
     programs: [
       { scheme: "Accreditation", program: "Hospitals (Full Accreditation)", capacity: "Principal Assessor" },
       { scheme: "Empanelment", program: "CGHS Empanelment Scheme", capacity: "Principal Assessor" }
+    ],
+    statusLogs: [
+      {
+        id: "LOG-INIT-2",
+        timestamp: "2024-09-12T11:45:00Z",
+        statusFrom: "Active",
+        statusTo: "Banned",
+        remarks: "Flagrant conflict of interest: Consulting privately with active assessment candidate sites without disclosing board affiliation.",
+        dateOfChange: "2024-09-12"
+      }
     ],
     biographyDocs: [],
     otherDocs: []

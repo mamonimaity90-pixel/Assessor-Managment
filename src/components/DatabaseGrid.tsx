@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Assessor, INDIAN_STATES, SchemeType, AssessorStatusType, DesignationType, JobRoleType, AssessorDocument } from '../types';
-import { Search, Filter, Trash2, ChevronDown, ChevronUp, Download, Eye, Ban, UserCheck, AlertTriangle, Calendar, FileText, X, Edit, Plus, History } from 'lucide-react';
+import { Search, Filter, Trash2, ChevronDown, ChevronUp, Download, Eye, Ban, UserCheck, AlertTriangle, Calendar, FileText, X, Edit, Plus, History, GraduationCap } from 'lucide-react';
 import DocumentSection from './DocumentSection';
 import CalendarPicker from './CalendarPicker';
 
@@ -69,6 +69,8 @@ export default function DatabaseGrid({
   const [editSelScheme, setEditSelScheme] = useState<SchemeType>('Accreditation');
   const [editSelProgram, setEditSelProgram] = useState<string>('');
   const [editSelCapacity, setEditSelCapacity] = useState<'Principal Assessor' | 'Assessor' | 'Co-Assessor' | 'Committee Member'>('Assessor');
+  const [editSelEffectiveDate, setEditSelEffectiveDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [editSelProgressRemarks, setEditSelProgressRemarks] = useState<string>('');
   // States for adding courses in edit mode
   const [editCourseName, setEditCourseName] = useState<string>('');
   const [editCourseDate, setEditCourseDate] = useState<string>('');
@@ -382,6 +384,7 @@ export default function DatabaseGrid({
       ...a,
       programs: a.programs ? [...a.programs] : [],
       courses: a.courses ? [...a.courses] : [],
+      roleProgression: a.roleProgression ? [...a.roleProgression] : [],
       biographyDocs: a.biographyDocs ? [...a.biographyDocs] : [],
       otherDocs: a.otherDocs ? [...a.otherDocs] : []
     });
@@ -389,6 +392,8 @@ export default function DatabaseGrid({
     if (catalog['Accreditation'] && catalog['Accreditation'].length > 0) {
       setEditSelProgram(catalog['Accreditation'][0]);
     }
+    setEditSelEffectiveDate(new Date().toISOString().slice(0, 10));
+    setEditSelProgressRemarks('');
   };
 
   const handleSaveAssessorEdits = (e: React.FormEvent) => {
@@ -401,17 +406,59 @@ export default function DatabaseGrid({
 
   const handleEditAddProgram = () => {
     if (!editForm || !editSelProgram) return;
-    if (editForm.programs.some(p => p.scheme === editSelScheme && p.program === editSelProgram)) {
-      return; // Already mapped
+    
+    const existingIndex = editForm.programs.findIndex(
+      p => p.scheme === editSelScheme && p.program === editSelProgram
+    );
+
+    let updatedPrograms = [...editForm.programs];
+    let roleFrom = "None (Newly Mapped)";
+    const remarksToUse = editSelProgressRemarks.trim();
+
+    if (existingIndex !== -1) {
+      // Program already mapped, let's see if the capacity is actually different
+      const oldAssoc = editForm.programs[existingIndex];
+      if (oldAssoc.capacity === editSelCapacity) {
+        return; // Nothing to do, perfect match
+      }
+      // Capacity is different - this is a role progression!
+      roleFrom = oldAssoc.capacity;
+      updatedPrograms[existingIndex] = {
+        ...oldAssoc,
+        capacity: editSelCapacity
+      };
+    } else {
+      // Brand new association
+      updatedPrograms.push({
+        scheme: editSelScheme,
+        program: editSelProgram,
+        capacity: editSelCapacity
+      });
     }
-    const updatedPrograms = [
-      ...editForm.programs,
-      { scheme: editSelScheme, program: editSelProgram, capacity: editSelCapacity }
-    ];
+
+    // Append to progression history log
+    const nextLogId = `RP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newProgressionLog = {
+      id: nextLogId,
+      scheme: editSelScheme,
+      program: editSelProgram,
+      roleFrom: roleFrom,
+      roleTo: editSelCapacity,
+      effectiveDate: editSelEffectiveDate || new Date().toISOString().slice(0, 10),
+      remarks: remarksToUse || (existingIndex !== -1 
+        ? `Upgraded from ${roleFrom} to ${editSelCapacity}` 
+        : `Empaneled as ${editSelCapacity}`),
+      timestamp: new Date().toISOString()
+    };
+
     setEditForm({
       ...editForm,
-      programs: updatedPrograms
+      programs: updatedPrograms,
+      roleProgression: [...(editForm.roleProgression || []), newProgressionLog]
     });
+
+    // Reset remarks input
+    setEditSelProgressRemarks('');
   };
 
   const handleEditRemoveProgram = (index: number) => {
@@ -1073,6 +1120,75 @@ export default function DatabaseGrid({
                                 )}
                               </div>
 
+                              {/* Assessor Role Level Progression & Career Trail */}
+                              <div className="col-span-1 md:col-span-12 mt-6 pt-5 border-t border-slate-200">
+                                <h4 className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-widest mb-3 flex items-center gap-1.5 animate-in fade-in">
+                                  <GraduationCap className="h-4 w-4 text-blue-600 animate-pulse" />
+                                  <span>Assessor Role Level Progression & Promotion History Trail</span>
+                                </h4>
+                                
+                                {(!a.roleProgression || a.roleProgression.length === 0) ? (
+                                  <div className="bg-slate-50 border border-slate-200 text-slate-500 text-xs p-3.5 rounded-lg font-mono">
+                                    No logged role progressions. Update this assessor's mapping tags or capacities using the Edit modal to generate progression entries automatically.
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {[...a.roleProgression]
+                                      .sort((m1, m2) => new Date(m2.effectiveDate).getTime() - new Date(m1.effectiveDate).getTime())
+                                      .map((prog) => {
+                                        const effDateStr = prog.effectiveDate ? new Date(prog.effectiveDate).toLocaleDateString(undefined, {
+                                          year: 'numeric',
+                                          month: 'short',
+                                          day: 'numeric'
+                                        }) : 'N/A';
+                                        
+                                        const capacityStyles: Record<string, string> = {
+                                          'Principal Assessor': 'bg-blue-50 text-blue-700 border-blue-250 border-blue-200',
+                                          'Assessor': 'bg-emerald-50 text-emerald-700 border-emerald-250 border-emerald-200',
+                                          'Co-Assessor': 'bg-violet-50 text-violet-700 border-violet-200',
+                                          'Committee Member': 'bg-slate-100 text-slate-650 border-slate-200 border-slate-250',
+                                          'None (Newly Mapped)': 'bg-gray-50 text-slate-500 border-gray-200'
+                                        };
+
+                                        return (
+                                          <div key={prog.id} className="bg-white border border-slate-205 border-slate-200 rounded-xl p-3.5 shadow-sm space-y-2 flex flex-col justify-between animate-in slide-in-from-bottom-2 duration-200">
+                                            <div className="space-y-1.5">
+                                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                                                  Effective Date: {effDateStr}
+                                                </span>
+                                                <span className="text-[9px] font-mono font-extrabold text-[#2563eb] tracking-wide uppercase">
+                                                  {prog.scheme}
+                                                </span>
+                                              </div>
+                                              
+                                              <div className="text-xs font-bold text-slate-800 leading-snug">
+                                                {prog.program}
+                                              </div>
+
+                                              <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold pt-1 flex-wrap">
+                                                <span className={`px-1.5 py-0.5 border rounded ${capacityStyles[prog.roleFrom] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                                  {prog.roleFrom}
+                                                </span>
+                                                <span className="text-slate-400">&rarr;</span>
+                                                <span className={`px-1.5 py-0.5 border rounded ${capacityStyles[prog.roleTo] || 'bg-slate-100 text-slate-700 border-slate-250'}`}>
+                                                  {prog.roleTo}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {prog.remarks && (
+                                              <div className="text-[11px] text-slate-650 text-slate-600 bg-slate-50/70 p-2.5 rounded-lg border border-slate-100 font-sans mt-2 italic leading-relaxed">
+                                                "{prog.remarks}"
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </div>
+
                               {/* Document Chest Section */}
                               <div className="col-span-1 md:col-span-12 mt-6 pt-5 border-t border-slate-200">
                                 <h4 className="text-[11px] font-mono font-bold text-slate-700 uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -1616,6 +1732,33 @@ export default function DatabaseGrid({
                     <Plus className="h-4 w-4 text-amber-500" />
                     <span>Map Association</span>
                   </button>
+                </div>
+
+                {/* Sub-panel: Role effective date & promotion comment */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 bg-white/70 p-3 rounded-lg border border-slate-200 shadow-sm">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-600 font-bold block">
+                      📆 Effective Date of Role Status
+                    </label>
+                    <input
+                      type="date"
+                      value={editSelEffectiveDate}
+                      onChange={(e) => setEditSelEffectiveDate(e.target.value)}
+                      className="w-full bg-white border border-slate-250 border-slate-200 text-slate-800 text-xs rounded-lg p-2 focus:outline-none focus:border-amber-500 font-mono cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-600 font-bold block">
+                      📝 Progression Remarks / Promotion Comment
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Promoted from Co-Assessor, passed 5th Edition upgrade exam"
+                      value={editSelProgressRemarks}
+                      onChange={(e) => setEditSelProgressRemarks(e.target.value)}
+                      className="w-full bg-white border border-slate-250 border-slate-200 text-slate-850 text-xs rounded-lg p-2 focus:outline-none focus:border-amber-500 font-sans text-slate-800 placeholder:text-slate-400"
+                    />
+                  </div>
                 </div>
 
                 {/* Display Current Maps */}

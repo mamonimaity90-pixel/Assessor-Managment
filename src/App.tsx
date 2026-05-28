@@ -15,7 +15,7 @@ export default function App() {
   
   // 1. Core Local Storage Synchronized States
   const [assessors, setAssessors] = useState<Assessor[]>([]);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(true);
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'database' | 'admin'>('dashboard');
 
   // Programs Catalog Dynamic State
@@ -168,7 +168,9 @@ export default function App() {
 
     const savedPrivilege = localStorage.getItem('nabh_admin_privilege_v1');
     if (savedPrivilege) {
-      setIsAdmin(savedPrivilege === 'true');
+      setIsAdmin(true); // Always authorized as requested by user
+    } else {
+      setIsAdmin(true);
     }
   }, []);
 
